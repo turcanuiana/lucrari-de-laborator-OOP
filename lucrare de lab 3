@@ -2,39 +2,49 @@ import os
 from datetime import datetime
 import threading
 import time
+import json
 
 class File:
-    def init(self, folder):
+    def __init__(self, folder):
         self.folder = folder
         self.snapshot = set()
+        self.snapshot_file = os.path.join(folder, "snapshot.json")
+        self.load_snapshot()
         self.snapshot_time = None
         self.update_event = threading.Event()
         self.update_thread = threading.Thread(target=self.update_snapshot, daemon=True)
-        self.detected_changes = {}
+
+    def load_snapshot(self):
+        if os.path.exists(self.snapshot_file):
+            with open(self.snapshot_file, "r") as f:
+                self.snapshot = set(json.load(f))
+
+    def save_snapshot(self):
+        with open(self.snapshot_file, "w") as f:
+            json.dump(list(self.snapshot), f)
 
     def update_snapshot(self):
         while not self.update_event.is_set():
-            current_files = set(os.listdir(self.folder))
+            try:
+                current_files = set(os.listdir(self.folder))
+            except FileNotFoundError:
+                print(f"Error: Folder '{self.folder}' not found.")
+                time.sleep(5)
+                continue
+                
             new_files = current_files - self.snapshot
             deleted_files = self.snapshot - current_files
-            changed_files = {}
-            for file in current_files:
-                if file in self.snapshot:
-                    current_file_path = os.path.join(self.folder, file)
-                    snapshot_file_path = os.path.join(self.folder, file)
-                    if os.path.getmtime(current_file_path) != os.path.getmtime(snapshot_file_path):
-                        changed_files[file] = 'modified'
-            if new_files or deleted_files or changed_files:
+            if new_files or deleted_files:
                 print("Changes detected at", datetime.now())
                 if new_files:
                     print("New files added:", new_files)
                 if deleted_files:
                     print("Files deleted:", deleted_files)
-                if changed_files:
-                    print("Files modified:", changed_files)
-                self.detected_changes.update({'snapshot_time': datetime.now(), 'new_files': new_files, 'deleted_files': deleted_files, 'changed_files': changed_files})
+                
+                self.save_snapshot()
+                
             self.snapshot = current_files
-            time.sleep(5)
+            time.sleep(5) 
 
     def start_update_thread(self):
         self.update_thread.start()
@@ -43,76 +53,63 @@ class File:
         self.update_event.set()
         self.update_thread.join()
 
+    def update(self):
+        update_thread = threading.Thread(target=self.update_snapshot)
+        update_thread.start()
+        print("Manual update initiated.")
+
 class Info(File):
     def list_files_and_changes(self):
-        files = os.listdir(self.folder)
+        try:
+            files = os.listdir(self.folder)
+        except FileNotFoundError:
+            print(f"Error: Folder '{self.folder}' not found.")
+            return
+            
         for file in files:
             file_path = os.path.join(self.folder, file)
             if os.path.isfile(file_path):
                 file_size = os.path.getsize(file_path)
                 print(f"File: {file},\t\t Size: {file_size} bytes")
-                if file.endswith('.txt'):
-                    with open(file_path, 'r') as f:
-                        lines = f.readlines()
-                    line_count = len(lines)
-                    word_count = sum(len(line.split()) for line in lines)
-                    char_count = sum(len(line) for line in lines)
-                    print(f"Line count: {line_count}, Word count: {word_count}, Character count: {char_count}")
-                elif file.endswith(('.png', '.jpg')):
-                    image_size = self.get_image_size(file_path)
-                    print(f"Image size: {image_size[0]}x{image_size[1]}")
-                elif file.endswith(('.py', '.java')):
-                    line_count, class_count, method_count = self.get_code_metrics(file_path)
-                    print(f"Line count: {line_count}, Class count: {class_count}, Method count: {method_count}")
-
-    def get_image_size(self, file_path):
-        with open(file_path, 'rb') as f:
-            img_data = f.read(24)
-            if img_data[0:4] != b'\x89PNG':
-                return None
-            width = int.from_bytes(img_data[16:20], byteorder='big')
-            height = int.from_bytes(img_data[20:24], byteorder='big')
-            return width, height
-
-    def get_code_metrics(self, file_path):
-        with open(file_path, 'r') as f:
-            lines = f.readlines()
-        line_count = len(lines)
-        class_count = sum(1 for line in lines if line.strip().startswith('class'))
-        method_count = sum(1 for line in lines if line.strip().startswith('def'))
-        return line_count, class_count, method_count
 
 class Status(File):
     def check_status(self):
-        if self.detected_changes:
-            print("Snapshot Time:", self.detected_changes['snapshot_time'])
-            if self.detected_changes['new_files']:
-                print("New files added:", self.detected_changes['new_files'])
-            if self.detected_changes['deleted_files']:
-                print("Files deleted:", self.detected_changes['deleted_files'])
-            if self.detected_changes['changed_files']:
-                print("Files modified:", self.detected_changes['changed_files'])
+        if self.snapshot_time:
+            print("Snapshot Time:", self.snapshot_time)
         else:
             print("Snapshot has not been updated.")
+        
+        try:
+            files = os.listdir(self.folder)
+        except FileNotFoundError:
+            print(f"Error: Folder '{self.folder}' not found.")
+            return
+            
+        for file in files:
+            file_path = os.path.join(self.folder, file)
+            if os.path.isfile(file_path):
+                last_modified_time = os.path.getmtime(file_path)
+                last_modified_time_str = datetime.fromtimestamp(last_modified_time).strftime('%Y-%m-%d %H:%M:%S')
+                print(f"File: {file},\t\t Last Modified Time: {last_modified_time_str}")
 
-folder_path = r"C:\Users\Admin\Desktop\TOTALLY_NOT_GTA6_Leaks"
+folder_path = r"C:\Users\15123\Desktop\l3"
+file_handler = File(folder_path)
 info = Info(folder_path)
 status = Status(folder_path)
-update = File(folder_path)
-update.start_update_thread()
+
+file_handler.start_update_thread()
 
 while True:
-    action = input("Enter the action you want to perform: Info / Status / Commit (or type 'exit' to quit): ").lower()
-    if action == "info":
+    action = input("Enter the action you want to perform: Update / Info / Status (or type 'exit' to quit): ").lower()
+    if action == "update":
+        file_handler.update()
+    elif action == "info":
         info.list_files_and_changes()
     elif action == "status":
         status.check_status()
-    elif action == "commit":
-        update.snapshot_time = datetime.now()
-        print("Snapshot updated successfully.")
     elif action == "exit":
         print("Exiting the program...")
-        update.stop_update_thread()
+        file_handler.stop_update_thread()
         break
     else:
         print("Invalid action. Please try again.")
