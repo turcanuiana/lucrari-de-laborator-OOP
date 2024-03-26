@@ -77,12 +77,16 @@ class Status(File):
                 last_modified_time_str = datetime.fromtimestamp(last_modified_time).strftime('%Y-%m-%d %H:%M:%S')
                 print(f"File: {file},\t\t Last Modified Time: {last_modified_time_str}")
 
-folder_path = r"C:\Users\Admin\Desktop\TOTALLY_NOT_GTA6_Leaks"
-info = Info(folder_path)
-status = Status(folder_path)
-update = File(folder_path)
-update.start_update_thread()
-
+folder_path = r"C:\Users\15123\Desktop\l3"
+class File:
+    def __init__(self, folder):
+        self.folder = folder
+        self.snapshot = set()
+        self.snapshot_file = os.path.join(folder, "snapshot.json")
+        self.load_snapshot()
+        self.snapshot_time = None
+        self.update_event = threading.Event()
+        self.update_thread = threading.Thread(target=self.update_snapshot, daemon=True)
 while True:
     action = input("Enter the action you want to perform: Update / Info / Status (or type 'exit' to quit): ").lower()
     if action == "update":
